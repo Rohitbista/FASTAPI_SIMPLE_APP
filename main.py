@@ -1,17 +1,25 @@
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 app = FastAPI()
 
-items = []
+class Item(BaseModel):
+    id: int
+    name: str
+    description: str
+
+items = {}
 
 @app.get("/")
 def root():
     return {"detail": "This is a simple app to keep track of items"}
 
 @app.post("/items")
-def add_item(item: str) -> str:
-    items.append(item)
-    return f"Item {item} has been successfully added"
+def add_item(item: Item) -> str:
+    if items and item.id in items:
+        raise HTTPException(status_code=400, detail="Item id already exist")
+    items[item.id] = item
+    return f"Item {item.id} has been successfully added"
 
 @app.get("/items")
 def get_all_items():
@@ -24,9 +32,11 @@ def delete_an_item(item_id: int):
         return items
     raise HTTPException(status_code=404, detail=f"Item id {item_id} not found")
 
-@app.put("/items/{item_id}")
-def update_an_item(item_id: int, item: str):
-    if 0 <= item_id < len(items):
+@app.put("/items/{item_id}", response_model=Item)
+def update_an_item(item_id: int, item: Item):
+    if item_id in items:
+        delete_an_item(item.id)
+        item_id = item.id
         items[item_id] = item
-        return items
+        return items[item_id]
     raise HTTPException(status_code=404, detail=f"Item id {item_id} not found")
