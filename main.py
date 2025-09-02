@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 app = FastAPI()
 
@@ -17,3 +17,16 @@ def add_item(item: str) -> str:
 def get_all_items():
     return items
 
+@app.delete("/items/{item_id}")
+def delete_an_item(item_id: int):
+    if 0 <= item_id < len(items):
+        del items[item_id]
+        return items
+    raise HTTPException(status_code=404, detail=f"Item id {item_id} not found")
+
+@app.put("items/{item_id}")
+def update_an_item(item_id: int, item: str):
+    if 0 <= item_id < len(items):
+        items[item_id] = item
+        return items
+    raise HTTPException(status_code=404, detail=f"Item id {item_id} not found")
