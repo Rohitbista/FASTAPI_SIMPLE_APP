@@ -24,7 +24,7 @@ def delete_an_item(item_id: int):
         return items
     raise HTTPException(status_code=404, detail=f"Item id {item_id} not found")
 
-@app.put("items/{item_id}")
+@app.put("/items/{item_id}")
 def update_an_item(item_id: int, item: str):
     if 0 <= item_id < len(items):
         items[item_id] = item
