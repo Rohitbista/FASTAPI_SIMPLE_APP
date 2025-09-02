@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import sqlite3
 
 app = FastAPI()
 
@@ -8,7 +9,72 @@ class Item(BaseModel):
     name: str
     description: str
 
-items = {}
+#--------------------------------------Database Setup------------------------------------------
+
+def get_connection():
+    return sqlite3.connect("Item_Database.db")
+
+def create_table():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS item_list (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+create_table()
+
+def save_to_sqlite(item: Item):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT OR REPLACE INTO item_list (id, name, description) VALUES (?, ?, ?)", (item.id, item.name, item.description))
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=404, detail=e)
+
+def update_in_sqlite(item: Item):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE item_list SET name = ?, description = ? WHERE id = ?", (item.name, item.description, item.id))
+    conn.commit()
+    conn.close()
+
+def get_items_from_sqlite():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM item_list")
+    rows = cursor.fetchall()
+    conn.close()
+    return [Item(id=row[0], name=row[1], description=row[2]) for row in rows]
+
+def delete_item_from_sqlite(item_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM item_list WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+
+def exists_in_sqlite(item_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM item_list")
+    rows = cursor.fetchall()
+    conn.close()
+    for row in rows:
+        if item_id == row[0]:
+            return True
+    return False
+
+
+
+#------------------------------------REST API Setup---------------------------------------------
 
 @app.get("/")
 def root():
@@ -16,27 +82,25 @@ def root():
 
 @app.post("/items")
 def add_item(item: Item) -> str:
-    if items and item.id in items:
-        raise HTTPException(status_code=400, detail="Item id already exist")
-    items[item.id] = item
+    if exists_in_sqlite(item.id):
+        raise HTTPException(status_code=400, detail="Item id already exist in db")
+    save_to_sqlite(item)
     return f"Item {item.id} has been successfully added"
 
 @app.get("/items")
 def get_all_items():
-    return items
+    return get_items_from_sqlite()
 
 @app.delete("/items/{item_id}")
 def delete_an_item(item_id: int):
-    if 0 <= item_id < len(items):
-        del items[item_id]
-        return items
+    if exists_in_sqlite(item_id):
+        delete_item_from_sqlite(item_id)
+        return f"Item with item id {item_id} has been deleted"
     raise HTTPException(status_code=404, detail=f"Item id {item_id} not found")
 
 @app.put("/items/{item_id}", response_model=Item)
 def update_an_item(item_id: int, item: Item):
-    if item_id in items:
-        delete_an_item(item.id)
-        item_id = item.id
-        items[item_id] = item
-        return items[item_id]
+    if exists_in_sqlite(item_id):
+        update_in_sqlite(item)
+        return item
     raise HTTPException(status_code=404, detail=f"Item id {item_id} not found")
